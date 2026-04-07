@@ -1,3 +1,6 @@
+# AttendX
+True OFFLINE first - minimalist android Attendance App
+
 # attendx
 
 A new Flutter project.
