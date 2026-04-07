@@ -1,0 +1,511 @@
+Build a complete Flutter Android app called AttendX.
+Output all files in a proper Flutter project structure.
+Tab: Mobile App.
+
+## Master Orchestrator Prompt → Multi-Agent Flutter Build System
+
+MASTER ORCHESTRATOR DIRECTIVE
+==============================
+ROLE: You are the Architect Agent. You decompose this build into sequential
+sub-agent tasks. You do not write code. You validate outputs from each
+sub-agent before passing context to the next. You maintain a shared
+CONTEXT_BLOCK that each agent receives and appends to.
+
+PROJECT: AttendX — Offline-first Flutter attendance app. Free. No auth.
+No backend. No cloud. Android API 34+ only.
+
+IMMUTABLE CONSTRAINTS (propagate to ALL sub-agents, no exceptions):
+  - NO Firebase, Supabase, or any HTTP dependency
+  - NO user authentication of any kind
+  - NO AppSheet, no web views
+  - NO heavy libraries for CSV — native string concatenation only
+  - State management: flutter_riverpod ONLY (not Provider, not Bloc)
+  - Grid toggle state MUST use Set<int>, never List<int>
+  - All Hive map keys MUST be String type, coerce to int on read
+  - compute() isolate MUST receive a single ExportPayload object, never
+    multiple args
+  - UUID generation via `uuid` package only, never timestamp-as-ID
+
+PUBSPEC (locked — sub-agents must not deviate):
+  dependencies:
+    flutter_riverpod: ^2.5.1
+    hive: ^2.2.3
+    hive_flutter: ^1.1.0
+    share_plus: ^9.0.0
+    uuid: ^4.4.0
+    intl: ^0.19.0
+  dev_dependencies:
+    hive_generator: ^2.0.1
+    build_runner: ^2.4.9
+
+EXECUTION ORDER:
+  Agent 1 → Data Layer
+  Agent 2 → State Layer
+  Agent 3 → Grid UI
+  Agent 4 → Dashboard UI
+  Agent 5 → Roster Ingestion UI
+  Agent 6 → Export Engine
+  Agent 7 → Integration + main.dart
+
+Each agent receives: IMMUTABLE_CONSTRAINTS + PUBSPEC + prior agents'
+output as CONTEXT. Each agent appends its output to CONTEXT_BLOCK.
+Orchestrator validates before proceeding.
+```
+
+---
+
+```
+═══════════════════════════════════════════
+AGENT 1 — DATA LAYER
+═══════════════════════════════════════════
+ROLE: Hive schema engineer. You output only Dart code + build_runner
+annotations. No UI. No business logic. No state.
+
+TASK: Generate the following Hive models with TypeAdapters:
+
+MODEL 1 — ClassEntry (typeId: 0)
+  Fields:
+    classId:      String   — UUID v4
+    title:        String   — human label e.g. "CSE-3B Digital Electronics"
+    weekdays:     List<int> — 0=Mon,1=Tue,...6=Sun. Drives dashboard suggestion.
+    startHour:    int      — 24h format. Used for context-aware sort on dashboard.
+    totalStudents: int
+    students:     Map<String, String> — KEY is roll number as String ("01","02").
+                  REASON: Hive silently corrupts Map<int,*> on AOT compilation.
+                  Consumer code must call int.parse(key) when index is needed.
+
+MODEL 2 — SnapshotEntry (typeId: 1)
+  Fields:
+    snapshotId:   String   — UUID v4. Never DateTime.millisecondsSinceEpoch.
+    timestamp:    DateTime
+    classId:      String   — FK reference to ClassEntry.classId
+    classTitle:   String   — DENORMALIZED. Deep copy at save time. Immutable.
+    snapshotData: List<Map<String, dynamic>>
+                  Each map contains exactly 3 keys:
+                    "roll":     String  — e.g. "07"
+                    "name":     String  — name at moment of snapshot
+                    "isAbsent": bool
+
+MODEL 3 — ExportPayload (NOT a Hive model — pure Dart, no annotation)
+  This is the isolate message carrier. Must be fully serializable with
+  no Flutter/BuildContext dependencies.
+  Fields:
+    snapshots:  List<Map<String, dynamic>>  — pre-filtered snapshot list,
+                each map is the full SnapshotEntry serialized to primitives
+    classTitle: String
+
+HIVE BOX NAMES (constants, define in a separate hive_constants.dart):
+  static const String classBox    = 'class_box';
+  static const String snapshotBox = 'snapshot_box';
+
+VALIDATION BEFORE HANDOFF:
+  [ ] TypeAdapter typeId values are unique (0 and 1)
+  [ ] No Map<int,*> anywhere in HiveObject fields
+  [ ] ExportPayload has zero Flutter imports
+  [ ] hive_constants.dart exports both box name strings
+  [ ] No DateTime stored as int — Hive natively supports DateTime
+```
+
+---
+
+```
+═══════════════════════════════════════════
+AGENT 2 — STATE LAYER (RIVERPOD)
+═══════════════════════════════════════════
+ROLE: Riverpod state architect. You output providers and notifiers only.
+No widget code. No Hive read/write — only the provider wiring that
+UI agents will consume.
+
+INPUTS: Receive AGENT 1 output in full.
+
+PROVIDERS TO GENERATE:
+
+PROVIDER 1 — classListProvider
+  Type: StreamProvider<List<ClassEntry>>
+  Source: Hive watchBoxForChanges on classBox.
+  Purpose: Dashboard reactive list.
+
+PROVIDER 2 — attendanceGridNotifier
+  Type: StateNotifierProvider<AttendanceGridNotifier, AttendanceGridState>
+
+  AttendanceGridState (immutable, use @freezed or manual copyWith):
+    activeClass:  ClassEntry?
+    absentRolls:  Set<int>     ← MUST be Set, not List. O(1) toggle.
+    isSaving:     bool
+
+  AttendanceGridNotifier methods:
+    void loadClass(ClassEntry c)   — sets activeClass, clears absentRolls
+    void toggleRoll(int roll)      — add if absent from Set, remove if present
+    Future<void> saveSnapshot()    — builds SnapshotEntry, writes to Hive,
+                                     uses uuid package for snapshotId,
+                                     sets isSaving during async gap
+    void reset()                   — full state clear
+
+  CRITICAL: toggleRoll must use:
+    state = state.copyWith(
+      absentRolls: Set<int>.from(state.absentRolls)..toggle(roll)
+    );
+  where toggle = contains ? remove : add.
+  Reason: Riverpod equality check on same Set reference will skip rebuild.
+  Always emit a NEW Set instance on toggle.
+
+PROVIDER 3 — rosterIngestionNotifier
+  Type: StateNotifierProvider<RosterIngestionNotifier, RosterIngestionState>
+
+  RosterIngestionState:
+    rawPaste:      String
+    parsedNames:   List<String>   — output of paste parser
+    isConfirmed:   bool
+    errorMessage:  String?
+
+  RosterIngestionNotifier methods:
+    void parsePaste(String raw)    — runs normalization + split, populates
+                                     parsedNames, never throws, sets
+                                     errorMessage if result is empty
+    Future<void> confirmAndSave(String classId, String title,
+                                List<int> weekdays, int startHour)
+                                   — writes ClassEntry to Hive, sets isConfirmed
+
+PROVIDER 4 — exportFilterNotifier
+  Type: StateNotifierProvider<ExportFilterNotifier, ExportFilterState>
+
+  ExportFilterState:
+    selectedClassId: String?
+    fromDate:        DateTime    — default: now minus 30 days
+    toDate:          DateTime    — default: DateTime.now()
+    isExporting:     bool
+    exportError:     String?
+
+  ExportFilterNotifier methods:
+    void setClass(String? id)
+    void setFromDate(DateTime d)
+    void setToDate(DateTime d)
+    Future<void> runExport()     — queries Hive, builds ExportPayload,
+                                   calls compute(), passes result to share_plus
+
+VALIDATION BEFORE HANDOFF:
+  [ ] Zero direct widget imports
+  [ ] AttendanceGridState.absentRolls is Set<int> not List<int>
+  [ ] toggleRoll emits new Set instance every call
+  [ ] saveSnapshot uses uuid package
+  [ ] exportFilterNotifier.runExport handles compute() with single
+      ExportPayload arg — not multiple args
+```
+
+---
+
+```
+═══════════════════════════════════════════
+AGENT 3 — GRID UI (VIEW B)
+═══════════════════════════════════════════
+ROLE: Flutter widget engineer. You output only the AttendanceGridScreen
+widget and its sub-widgets. No state logic — consume providers from
+Agent 2 only.
+
+INPUTS: AGENT 1 + AGENT 2 outputs in full.
+
+WIDGET: AttendanceGridScreen
+  Constructor arg: ClassEntry classEntry
+  On mount: call ref.read(attendanceGridNotifier.notifier).loadClass(classEntry)
+
+GRID REQUIREMENTS:
+  Widget: GridView.builder
+  crossAxisCount: 6  (produces 6-wide grid, rows auto-expand)
+  itemCount: classEntry.totalStudents
+  physics: NeverScrollableScrollPhysics() if totalStudents <= 60, else
+           ClampingScrollPhysics()
+
+  Each cell (GridTile):
+    Roll number displayed: index + 1, zero-padded to 2 digits
+    Color logic:
+      Consumer watches attendanceGridNotifier
+      GREEN (#4CAF50) if roll NOT in absentRolls
+      RED   (#F44336) if roll IN absentRolls
+    onTap: ref.read(attendanceGridNotifier.notifier).toggleRoll(roll)
+
+    TOOLTIP (native Flutter Tooltip widget):
+      message: classEntry.students[rollString] ?? '' 
+      DO NOT throw or show error if name is null — empty string is valid
+      triggerMode: TooltipTriggerMode.longPress
+      Tooltip must NOT block tap events on short press
+
+  PERFORMANCE CONSTRAINT:
+    Each GridTile must be a separate ConsumerWidget (not Consumer inside
+    a stateless parent). This ensures only the tapped cell rebuilds.
+    Name this widget: AttendanceCell
+    It receives: int roll, ClassEntry classEntry
+    It watches: attendanceGridNotifier.select(
+                  (s) => s.absentRolls.contains(roll)
+                )
+    The .select() is MANDATORY — prevents full grid rebuild on single toggle.
+
+SAVE BUTTON:
+  Position: Floating action button or bottom bar (your choice, consistent
+  with Material 3)
+  Shows CircularProgressIndicator when isSaving == true
+  On tap: ref.read(attendanceGridNotifier.notifier).saveSnapshot()
+  After save: show SnackBar "Saved ✓ [count] absent", then
+              ref.read(attendanceGridNotifier.notifier).reset()
+
+EXPORT SHORTCUT:
+  AppBar trailing icon (share icon)
+  On tap: opens ExportBottomSheet (built by Agent 6) with
+          selectedClassId pre-filled from classEntry.classId
+
+VALIDATION BEFORE HANDOFF:
+  [ ] Each cell is ConsumerWidget with .select() watch
+  [ ] Tooltip uses longPress mode, does not block tap
+  [ ] Color driven by Set.contains() — O(1)
+  [ ] Save button shows loading state
+  [ ] No state logic in this file — all in Agent 2 notifier
+```
+
+---
+
+```
+═══════════════════════════════════════════
+AGENT 4 — DASHBOARD UI (VIEW A)
+═══════════════════════════════════════════
+ROLE: Flutter widget engineer. Output DashboardScreen only.
+
+CONTEXT-AWARE SUGGESTION LOGIC:
+  On build, read DateTime.now().weekday (1=Mon ... 7=Sun, convert to 0-indexed).
+  Read DateTime.now().hour.
+  Filter classListProvider results:
+    suggestedClasses = classes where:
+      weekdays.contains(currentWeekday) AND
+      startHour is within 2 hours before/after current hour
+  Display these at top in a highlighted card section labeled
+  "Now / Upcoming" — if empty, hide section entirely.
+
+CLASS LIST:
+  Below suggested: full list of all classes.
+  Each ListTile:
+    title: classEntry.title
+    subtitle: "${classEntry.totalStudents} students · 
+               ${classEntry.weekdays.map(dayLabel).join(', ')}"
+    trailing: IconButton for delete (with confirmation dialog)
+    onTap: Navigator.push to AttendanceGridScreen(classEntry)
+
+EMPTY STATE:
+  If classListProvider is empty:
+    Show centered illustration placeholder (use Icon, no external assets)
+    Text: "No classes yet. Tap + to add one."
+
+FAB:
+  Opens RosterIngestionScreen (View C) via Navigator.push
+  Icon: Icons.add
+
+VALIDATION BEFORE HANDOFF:
+  [ ] Suggestion logic uses weekday + hour window, not hardcoded
+  [ ] Empty state shown when list is empty
+  [ ] Delete has confirmation dialog — no accidental wipes
+  [ ] Watches classListProvider (StreamProvider — auto-rebuilds on Hive change)
+```
+
+---
+
+```
+═══════════════════════════════════════════
+AGENT 5 — ROSTER INGESTION UI (VIEW C)
+═══════════════════════════════════════════
+ROLE: Flutter widget engineer. Output RosterIngestionScreen only.
+
+PASTE NORMALIZATION (implement in rosterIngestionNotifier.parsePaste):
+  Input: raw String from multiline TextField
+  Pipeline (execute in order):
+    1. raw.replaceAll('\r\n', '\n')       — Windows CRLF
+    2. .replaceAll('\r', '\n')             — legacy Mac CR
+    3. .replaceAll(RegExp(r'\t+'), ' ')    — Excel tab delimiters → space
+    4. .replaceAll(RegExp(r'[^\w\s\n]'), '') — strip special chars,
+                                               preserve word chars + space + newline
+    5. .split('\n')
+    6. .map((e) => e.trim())
+    7. .where((e) => e.isNotEmpty)
+    8. .toList()
+
+  Index + 1 = Roll Number. Name at index 0 = Roll 01.
+
+UI STRUCTURE:
+  Step 1 — Paste Area:
+    Large multiline TextField, hint: "Paste student names from Excel here..."
+    Below: "Parse" button → calls parsePaste(controller.text)
+
+  Step 2 — Preview List (shown after parse, hidden before):
+    ListView of parsed names:
+      each row: "[01] Rahul Sharma"   (zero-padded roll)
+    If parsedNames.isEmpty after parse: show error text from errorMessage
+
+  Step 3 — Class Metadata (shown alongside preview):
+    TextFormField: Class Title
+    Row of weekday toggles: M T W T F S S (ToggleButtons)
+    TimePicker trigger: "Start Time" — stores as int (hour only)
+    TextFormField: Total Students (pre-filled with parsedNames.length,
+                   editable — teacher may have more students to add later)
+
+  Step 4 — Confirm Button:
+    Label: "Confirm Mapping & Lock"
+    Disabled until: parsedNames.isNotEmpty AND title.isNotEmpty
+    On tap: calls confirmAndSave(...)
+    After save: Navigator.pop(), dashboard auto-refreshes via StreamProvider
+
+VALIDATION BEFORE HANDOFF:
+  [ ] All 8 normalization steps implemented in order
+  [ ] Confirm button disabled until both conditions met
+  [ ] Total students field pre-filled but editable
+  [ ] No save happens without explicit confirm tap
+  [ ] Weekday toggle stores as List<int> matching ClassEntry schema
+```
+
+---
+
+```
+═══════════════════════════════════════════
+AGENT 6 — EXPORT ENGINE
+═══════════════════════════════════════════
+ROLE: Isolate engineer + bottom sheet UI. This agent owns the entire
+export pipeline from filter UI to share_plus delivery.
+
+PART A — ISOLATE FUNCTION (top-level function, NOT a class method)
+  Signature:
+    String buildCsvMatrix(ExportPayload payload)
+
+  This function runs in a separate Dart isolate via compute().
+  It has NO access to Flutter widgets, Hive, or BuildContext.
+  It receives only ExportPayload (primitives + List/Map).
+
+  MATRIX CONSTRUCTION ALGORITHM:
+    Step 1: Extract all unique dates from payload.snapshots
+            Key: snapshot["timestamp"] as DateTime, truncated to date only
+            Sort ascending.
+            These become X-axis columns.
+
+    Step 2: Extract all unique rolls from all snapshotData entries.
+            Sort numerically (parse String roll to int for sort, re-pad after).
+
+    Step 3: Build a lookup: Map<String, Map<String, String>>
+            Outer key: roll (String)
+            Inner key: date string "yyyy-MM-dd"
+            Value: "A" if isAbsent==true, "P" if isAbsent==false
+
+    Step 4: Build most-recent name per roll:
+            For each roll, find the snapshot with the latest timestamp
+            and use the name from that snapshotData entry.
+            This is the Y-axis label.
+
+    Step 5: Construct CSV string using StringBuffer (not + concatenation):
+            Header row: "Roll,Name," + dates.join(",") + "\n"
+            For each roll:
+              row = roll + "," + name + "," +
+                    dates.map((d) => lookup[roll]?[d] ?? "-").join(",")
+              buffer.writeln(row)
+
+    Return buffer.toString()
+
+  PERFORMANCE NOTE: StringBuffer is mandatory for strings >1KB.
+  String + String in a loop creates O(n²) allocations.
+
+PART B — BOTTOM SHEET WIDGET: ExportBottomSheet
+  Constructor: optional String? preselectedClassId
+
+  UI:
+    Dropdown: Class selector (populated from classListProvider)
+              If preselectedClassId != null, auto-select on mount.
+    DateRangePicker or two date fields: From / To
+              Defaults: fromDate = now.subtract(Duration(days:30))
+                        toDate = DateTime.now()
+    "Export CSV" button:
+              Shows CircularProgressIndicator when isExporting==true
+              On tap: ref.read(exportFilterNotifier.notifier).runExport()
+
+  runExport() IMPLEMENTATION (in Agent 2 notifier, called here):
+    1. Query Hive snapshotBox for all SnapshotEntry objects.
+    2. Filter in-memory (no Hive query operators):
+         snapshot.classId == selectedClassId (if not null)
+         AND snapshot.timestamp >= fromDate
+         AND snapshot.timestamp <= toDate
+    3. If result is empty: set exportError = "No data for selected range"
+    4. Serialize filtered snapshots to List<Map<String,dynamic>>
+       (all primitives — compute() cannot receive Hive objects directly)
+    5. Build ExportPayload(snapshots: serialized, classTitle: title)
+    6. Call: final csv = await compute(buildCsvMatrix, payload)
+    7. Write csv to a temp file:
+         final dir = await getTemporaryDirectory()
+         final file = File('${dir.path}/AttendX_${classTitle}_${timestamp}.csv')
+         await file.writeAsString(csv)
+    8. Call: await Share.shareXFiles([XFile(file.path)],
+               text: 'Attendance export — $classTitle')
+    9. Set isExporting = false
+
+  ADD: path_provider to pubspec (needed for temp file path)
+       path_provider: ^2.1.3
+
+VALIDATION BEFORE HANDOFF:
+  [ ] buildCsvMatrix is a top-level function (not a method — compute() requires this)
+  [ ] StringBuffer used, never string + in loop
+  [ ] ExportPayload contains only primitives/List/Map (no Hive objects)
+  [ ] Missing date for a roll uses "-" not "" (blank cells confuse Excel)
+  [ ] Temp file name includes classTitle and date for user clarity
+  [ ] path_provider added to pubspec
+```
+
+---
+
+```
+═══════════════════════════════════════════
+AGENT 7 — INTEGRATION + ENTRY POINT
+═══════════════════════════════════════════
+ROLE: Integration agent. You assemble all prior agent outputs into a
+runnable app. You write main.dart, app router, theme, and Hive init.
+You fix any import conflicts between agents. You do not redesign.
+
+TASKS:
+
+TASK 1 — main.dart:
+  WidgetsFlutterBinding.ensureInitialized()
+  await Hive.initFlutter()
+  Hive.registerAdapter(ClassEntryAdapter())
+  Hive.registerAdapter(SnapshotEntryAdapter())
+  await Hive.openBox<ClassEntry>(HiveConstants.classBox)
+  await Hive.openBox<SnapshotEntry>(HiveConstants.snapshotBox)
+  runApp(ProviderScope(child: AttendXApp()))
+
+TASK 2 — Theme:
+  MaterialApp with Material 3 enabled.
+  ColorScheme.fromSeed(seedColor: Color(0xFF1565C0)) — deep blue, 
+  professional teacher aesthetic.
+  useMaterial3: true
+  Dark theme optional but not required for v1.
+
+TASK 3 — Router:
+  Use Navigator 1.0 (named routes are sufficient — no go_router needed).
+  Routes:
+    '/'         → DashboardScreen
+    '/grid'     → AttendanceGridScreen (receives ClassEntry via arguments)
+    '/ingest'   → RosterIngestionScreen
+
+TASK 4 — android/app/build.gradle:
+  compileSdkVersion 34
+  minSdkVersion 24    ← Web Serial not needed, but floor at 24 for
+                         Hive + Flutter compatibility
+  targetSdkVersion 34
+
+TASK 5 — AndroidManifest.xml:
+  No INTERNET permission. Explicitly omit it.
+  This signals to the Play Store (when published) and to security
+  scanners that the app is fully offline. Reinforces trust.
+
+TASK 6 — Final integration checklist (you must verify each):
+  [ ] build_runner generate has been run conceptually — adapter files exist
+  [ ] No circular imports between agent files
+  [ ] ExportBottomSheet can access exportFilterNotifier
+  [ ] AttendanceGridScreen receives ClassEntry via route arguments
+  [ ] All Hive boxes opened before runApp
+  [ ] No INTERNET permission in manifest
+  [ ] path_provider in pubspec (added by Agent 6)
+  [ ] uuid in pubspec (added by Agent 1)
+  [ ] intl in pubspec (used for date formatting in CSV header)
+
+OUTPUT: One clean main.dart + confirmation that all agent outputs
+integrate without conflict. Flag any conflict explicitly — do not
+silently resolve by removing features.
