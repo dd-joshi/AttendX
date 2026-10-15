@@ -75,13 +75,10 @@
 
 ## 📱 Screenshots
 
-<!-- Add screenshots here when available -->
 | Dashboard | Attendance (Cards) | Attendance (Grid) | Backup & Restore |
 |:---------:|:------------------:|:-----------------:|:----------------:|
-| ![Dashboard](assets/screenshots/dashboard.png) | ![Cards](assets/screenshots/attendance_cards.png) | ![Grid](assets/screenshots/attendance_grid.png) | ![Backup](assets/screenshots/backup.png) |
-| *Class list with backup reminder* | *Two-column roll/name* | *Compact number grid* | *JSON + Drive options* |
-
-> **Want to contribute screenshots?** See [Contributing](#-contributing).
+| ![Dashboard](assets/screenshots/dashboard.png) | ![Attendance cards](assets/screenshots/attendance_cards.png) | ![Attendance grid](assets/screenshots/attendance_grid.png) | ![Backup and restore](assets/screenshots/backup.png) |
+| *Class list* | *Two-column roll/name cards* | *Compact roll-number grid* | *JSON + Google Drive options* |
 
 ---
 
@@ -216,7 +213,7 @@ Issues and PRs welcome! Please:
 4. **Update** `CHANGELOG.md` under `## [Unreleased]` for your changes
 
 ### Good First Issues
-- Add screenshots to `assets/screenshots/` and update this README
+- Add **dark mode** support across the attendance and dashboard screens
 - Improve accessibility labels (semantics) on attendance screens
 - Add unit tests for CSV export / backup validation logic
 - Translate UI strings (currently English only)

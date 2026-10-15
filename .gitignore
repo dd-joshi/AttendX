@@ -38,6 +38,11 @@ android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 *.jks
 *.keystore
 
+# Build artifacts distributed through GitHub Releases, not source control
+*.apk
+*.aab
+*.ipa
+
 # Apple generated state
 ios/Flutter/.last_build_id
 ios/Flutter/Generated.xcconfig
