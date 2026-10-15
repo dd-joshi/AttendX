@@ -1,0 +1,71 @@
+# Operating systems
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors and IDEs
+.idea/
+.vs/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.suo
+*.user
+*.swp
+*~
+
+# Dart and Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+**/doc/api/
+
+# Android local state and signing material
+android/.gradle/
+android/captures/
+android/local.properties
+android/key.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+*.jks
+*.keystore
+
+# Apple generated state
+ios/Flutter/.last_build_id
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Flutter/ephemeral/
+macos/Flutter/ephemeral/
+
+# Desktop generated state
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# Logs, temporary files, and local secrets
+*.class
+*.log
+*.pyc
+.buildlog/
+.history/
+.env
+.env.*
+!.env.example
+
+# Local AI-assistant and prompt artifacts
+.aider*
+.claude/
+.codex/
+.cursor/
+.gemini/
+AGENTS.md
+CLAUDE.md
+MASTER.txt
+*.prompt.md

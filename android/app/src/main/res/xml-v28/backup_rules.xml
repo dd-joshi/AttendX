@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hive.initFlutter uses getApplicationDocumentsDirectory: app_flutter. -->
+<full-backup-content>
+    <!-- Flags are cumulative requirements; adding deviceToDeviceTransfer here
+         would prevent ordinary encrypted cloud backup on Android 9-11. -->
+    <include domain="root" path="app_flutter/class_box.hive" requireFlags="clientSideEncryption" />
+    <include domain="root" path="app_flutter/snapshot_box.hive" requireFlags="clientSideEncryption" />
+    <include domain="root" path="app_flutter/settings_box.hive" requireFlags="clientSideEncryption" />
+</full-backup-content>

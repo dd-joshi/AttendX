@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AttendX is an offline-first Android attendance app for teachers, with optional private Google Drive backup.">
+  <title>AttendX · Attendance for teachers</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, Segoe UI, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #172332; background: #f5f7fa; line-height: 1.55; }
+    header, main, footer { max-width: 860px; margin: auto; padding-left: 24px; padding-right: 24px; }
+    header { padding-top: 24px; padding-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+    .brand { color: #075da8; font-size: 1.25rem; font-weight: 800; text-decoration: none; }
+    nav { display: flex; flex-wrap: wrap; gap: 18px; }
+    a { color: #075da8; }
+    nav a { font-weight: 600; text-decoration: none; }
+    main { padding-top: 64px; padding-bottom: 80px; }
+    .eyebrow { color: #075da8; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: .8rem; }
+    h1 { font-size: clamp(2.25rem, 7vw, 4rem); line-height: 1.12; margin: 12px 0 20px; max-width: 700px; }
+    .lead { font-size: 1.2rem; color: #52606d; max-width: 650px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 30px 0 64px; }
+    .button { display: inline-block; border-radius: 10px; padding: 11px 18px; font-weight: 700; text-decoration: none; background: #0066bd; color: white; }
+    .button.secondary { background: white; color: #075da8; border: 1px solid #aab8c4; }
+    h2 { font-size: 1.7rem; margin-top: 0; }
+    .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 16px; }
+    article { background: white; border: 1px solid #dde5ec; border-radius: 14px; padding: 20px; }
+    article h3 { margin: 0 0 8px; }
+    article p { margin: 0; color: #52606d; }
+    .privacy { margin-top: 48px; padding: 22px; background: #e9f3fc; border-radius: 14px; }
+    .privacy p { margin-bottom: 0; }
+    footer { border-top: 1px solid #dbe3eb; padding-top: 24px; padding-bottom: 40px; color: #52606d; }
+    footer a { margin-right: 18px; }
+    a:focus-visible { outline: 3px solid #0066bd; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <header>
+    <a class="brand" href="./">AttendX</a>
+    <nav aria-label="Main navigation">
+      <a href="https://github.com/dd-joshi/AttendX">Project</a>
+      <a href="privacy.html">Privacy policy</a>
+    </nav>
+  </header>
+  <main>
+    <p class="eyebrow">Android attendance app</p>
+    <h1>Take attendance with confidence.</h1>
+    <p class="lead">AttendX helps teachers manage classes, rosters, and attendance on their Android phone. Core attendance works offline, with no AttendX account required.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/dd-joshi/AttendX">View the project</a>
+      <a class="button secondary" href="privacy.html">Read the privacy policy</a>
+    </div>
+    <section aria-labelledby="features-title">
+      <h2 id="features-title">What AttendX does</h2>
+      <div class="features">
+        <article><h3>Fast roll call</h3><p>Create lecture or lab classes, add students, mark absences, and record a topic for each session.</p></article>
+        <article><h3>Portable records</h3><p>Export attendance to CSV or save a backup file to a location you choose.</p></article>
+        <article><h3>Optional Drive backup</h3><p>When you choose it, save and restore backups in your Google account's private Drive app-data folder.</p></article>
+      </div>
+    </section>
+    <section class="privacy" aria-labelledby="privacy-title">
+      <h2 id="privacy-title">Your data stays under your control</h2>
+      <p>Attendance is stored on your device. AttendX has no ads or tracking, and the developer does not receive your classes or attendance. Google Drive backup runs only when you choose a Drive action. <a href="privacy.html">Read the full privacy policy.</a></p>
+    </section>
+  </main>
+  <footer>
+    <a href="privacy.html">Privacy policy</a>
+    <a href="https://github.com/dd-joshi/AttendX/issues">Support and issues</a>
+  </footer>
+</body>
+</html>
